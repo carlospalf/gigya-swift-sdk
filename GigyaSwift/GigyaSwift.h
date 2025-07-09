@@ -7,7 +7,6 @@
 //
 
 #import <UIKit/UIKit.h>
-#import "Global/Providers/ProviderWrapperProtocol.h"
 
 //! Project version number for GigyaSwift.
 FOUNDATION_EXPORT double GigyaSwiftVersionNumber;
