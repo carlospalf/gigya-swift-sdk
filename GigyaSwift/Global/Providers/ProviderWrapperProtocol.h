@@ -6,19 +6,15 @@
 //
 
 #import <Foundation/Foundation.h>
-#import <UIKit/UIKit.h>
-
-NS_ASSUME_NONNULL_BEGIN
 
 @protocol ProviderWrapperProtocol <NSObject>
 @required
 - (instancetype)init;
-@property (nonatomic, copy) NSString * _Nullable clientID;
-- (void)loginWithParams:(NSDictionary * _Nullable)params
-        viewController:(UIViewController * _Nullable)viewController
-            completion:(void (^)(NSDictionary * _Nullable jsonData, NSString * _Nullable error))completion;
+@property (nonatomic, copy) NSString *clientID;
+- (void)loginWithParams:(NSDictionary *)params
+         viewController:(UIViewController *)viewController
+             completion:(void (^)(NSDictionary *jsonData, NSString *error))completion;
+
 @optional
 - (void)logout;
 @end
-
-NS_ASSUME_NONNULL_END
