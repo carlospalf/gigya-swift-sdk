@@ -10,7 +10,7 @@ Pod::Spec.new do |spec|
 			your Swift application
 			DESC
 
-  spec.source        = { :git => 'https://github.com/carlospalf/gigya-swift-sdk.git', :branch => 'main' }
+  spec.source        = { :git => 'https://github.com/SAP/gigya-swift-sdk.git', :tag => 'core/v1.7.5' }
   spec.module_name   = 'Gigya'
   spec.swift_version = '5.3'
 
