@@ -36,12 +36,8 @@ final class SocialProvidersManager: SocialProvidersManagerProtocol {
 
     func checkIncludedProviders() {
         for provider in GigyaNativeSocialProviders.allCases {
-            if let providerWrapperClass = NSClassFromString("\(Bundle.appName()).\(provider.getClassName())") {
-                guard let providerWrapper = providerWrapperClass as AnyClass else {
-                    GigyaLogger.error(message: "\(provider.getClassName()) not extend to ProviderWrapperProtocol")
-                }
-
-                providersContainer[provider] = providerWrapper.init()
+            if let providerWrapperClass = NSClassFromString("\(Bundle.appName()).\(provider.getClassName())") as? ProviderWrapperProtocol.Type {
+                providersContainer[provider] = providerWrapperClass.init()
 
                 GigyaLogger.log(with: self, message: "[\(provider.rawValue)] save factory")
             }
