@@ -30,7 +30,7 @@ final class WebLoginProvider: Provider {
         return true
     }
 
-    func login<T: GigyaAccountProtocol>(type: T.Type, params: [String: Any], viewController: UIViewController? = nil, loginMode: String, completion: @escaping @convention(block) (GigyaApiResult<T>) -> Void) {
+    func login<T: GigyaAccountProtocol>(type: T.Type, params: [String: Any], viewController: UIViewController? = nil, loginMode: String, completion: @escaping (GigyaApiResult<T>) -> Void) {
         var newParams = params
         if newParams["loginMode"] as? String == nil {
             newParams["loginMode"] = loginMode
@@ -58,7 +58,7 @@ final class WebLoginProvider: Provider {
                 let getErrorCode = errorDesc?.split(separator: "+").first
                 let errorCode = Int(getErrorCode ?? "") ?? Int("\(jsonData?["error_code"] ?? "-1")") ?? -1
                 let regToken = jsonData?["regToken"] ?? ""
-                let callId = jsonData?["callId"] as? String ?? ""
+                let callId = jsonData?["callId"] ?? ""
                 let accessToken = jsonData?["access_token"] ?? ""
                 let provider = jsonData?["provider"] ?? ""
 

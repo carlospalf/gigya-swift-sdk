@@ -13,7 +13,6 @@ Pod::Spec.new do |spec|
   spec.source        = { :git => 'https://github.com/carlospalf/gigya-swift-sdk.git', :branch => 'main' }
   spec.module_name   = 'Gigya'
   spec.swift_version = '5.3'
-  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
 
 #  spec.platform = :ios
   spec.ios.deployment_target  = '11.0'

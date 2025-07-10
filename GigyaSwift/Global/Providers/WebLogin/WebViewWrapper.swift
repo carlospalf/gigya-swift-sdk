@@ -10,7 +10,7 @@ import Foundation
 import WebKit
 
 final class WebLoginWrapper: NSObject, ProviderWrapperProtocol {
-    
+
     var clientID: String?
 
     var webViewController: GigyaWebViewController?
@@ -42,21 +42,6 @@ final class WebLoginWrapper: NSObject, ProviderWrapperProtocol {
 
         webViewConfig()
     }
-    
-    func login(_ params: NSDictionary?, viewController: UIViewController?, completion: @escaping @convention(block) (NSDictionary?, NSString?) -> Void) {
-        let swiftParams = params as? [String: Any]
-        locadProvider(params: swiftParams)
-        
-        completionHandler = { result, error in
-            completion(result as NSDictionary?, error as NSString?)
-        }
-        
-        navigationController = UINavigationController(rootViewController: webViewController!)
-
-        if let navigationController = navigationController {
-            viewController?.show(navigationController, sender: nil)
-        }
-    }
 
     func webViewConfig() {
 
@@ -67,6 +52,20 @@ final class WebLoginWrapper: NSObject, ProviderWrapperProtocol {
             self?.navigationController?.dismiss(animated: true, completion: nil)
         }
 
+    }
+
+    func login(params: [String: Any]?, viewController: UIViewController?,
+               completion: @escaping (_ jsonData: [String: Any]?, _ error: String?) -> Void) {
+
+        locadProvider(params: params)
+
+        completionHandler = completion
+        
+        navigationController = UINavigationController(rootViewController: webViewController!)
+
+        if let navigationController = navigationController {
+            viewController?.show(navigationController, sender: nil)
+        }
     }
 
     func locadProvider(params: [String: Any]?) {

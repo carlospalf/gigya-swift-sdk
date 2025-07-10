@@ -8,14 +8,16 @@
 
 import Foundation
 import WebKit
+import AuthenticationServices
 
-final class WebLoginWrapper: NSObject, ProviderWrapperProtocol {
-    
+@available(iOS 13.0, *)
+final class SsoLoginWrapper: NSObject, ProviderWrapperProtocol {
+
     var clientID: String?
 
-    var webViewController: GigyaWebViewController?
+    var webViewController: ASWebAuthenticationLayer?
 
-    private var networkAdapter: NetworkAdapterProtocol?
+    private var networkProvider: NetworkProvider?
 
     private var config: GigyaConfig?
 
@@ -25,192 +27,201 @@ final class WebLoginWrapper: NSObject, ProviderWrapperProtocol {
 
     private var navigationController: UINavigationController?
 
-    private var completionHandler: ((_ jsonData: [String: Any]?, _ error: String?) -> Void)? = nil
+    private var completionHandler: ((_ jsonData: NSDictionary?, _ error: NSString?) -> Void)? = nil
+    
+    private var pkceCode: PKCEHelper?
+
+    static let callbackURLScheme = "gsapi"
+    
+    static let redirectUri = "\(callbackURLScheme)://\(Bundle.main.bundleIdentifier ?? "")/login/".lowercased()
+
+    struct EndPoints {
+        static let auth = "authorize"
+        static let token = "token"
+        static let loginPath = "/oidc/op/v1.0/"
+        static var fidmUrl = "https://fidm."
+    }
 
     required override init() {
         self.providerType = .web(provider: "")
     }
 
-    init(config: GigyaConfig, persistenceService: PersistenceService, providerType: GigyaSocialProviders, networkAdapter: NetworkAdapterProtocol) {
+    init(config: GigyaConfig, persistenceService: PersistenceService, providerType: GigyaSocialProviders, networkProvider: NetworkProvider) {
         self.providerType = providerType
         self.config = config
         self.persistenceService = persistenceService
-        self.webViewController = GigyaWebViewController()
-        self.networkAdapter = networkAdapter
+        self.networkProvider = networkProvider
 
         super.init()
 
-        webViewConfig()
+        self.pkceCode = try? PKCEHelper()
     }
-    
-    func login(_ params: NSDictionary?, viewController: UIViewController?, completion: @escaping @convention(block) (NSDictionary?, NSString?) -> Void) {
-        let swiftParams = params as? [String: Any]
-        locadProvider(params: swiftParams)
+
+    @objc public func login(_ params: NSDictionary?, viewController: UIViewController?,
+               completion: @escaping (NSDictionary?, NSString?) -> Void) {
         
-        completionHandler = { result, error in
-            completion(result as NSDictionary?, error as NSString?)
-        }
-        
-        navigationController = UINavigationController(rootViewController: webViewController!)
+        let swiftParams = params as? [String: Any] ?? [:]
+        loadProvider(params: swiftParams)
 
-        if let navigationController = navigationController {
-            viewController?.show(navigationController, sender: nil)
-        }
-    }
+        completionHandler = completion
 
-    func webViewConfig() {
+        webViewController?.closure = { [weak self] json, error in
+            guard let self = self else { return }
 
-        webViewController?.setDelegate(delegate: self)
-
-        webViewController?.userDidCancel = { [weak self] in
-            self?.completionHandler?(nil, GigyaDefinitions.Plugin.canceled)
-            self?.navigationController?.dismiss(animated: true, completion: nil)
-        }
-
-    }
-
-    func locadProvider(params: [String: Any]?) {
-        var loginMode = "standard"
-        if let mode = params?["loginMode"] as? String {
-            loginMode = mode
-        }
-
-        var loginPath = "socialize.login"
-        if loginMode == "connect" {
-            loginPath = "socialize.addConnection"
-        }
-
-        let urlString = "https://\(config?.cnameEnable ?? false ? "" : "socialize.")\(config?.apiDomain ?? "")/\(loginPath)"
-
-        var serverParams: [String: Any] = [:]
-        serverParams["redirect_uri"] = "gsapi://login_result"
-        serverParams["response_type"] = "token"
-        serverParams["client_id"] = config?.apiKey ?? ""
-        serverParams["gmid"] = persistenceService?.gmid ?? ""
-        serverParams["ucid"] = persistenceService?.ucid ?? ""
-        serverParams["x_secret_type"] = "oauth1"
-        serverParams["x_sdk"] = InternalConfig.General.version
-        serverParams["x_provider"] = providerType.rawValue
-        serverParams["oauth_token"] = params?["oauth_token"] ?? ""
-
-        if let params = params {
-            for param in params {
-                if param.key.contains("x_") {
-                    serverParams[param.key] = param.value
-                } else {
-                    serverParams["x_\(param.key)"] = param.value
-                }
+            if let error = error {
+                self.completionHandler?(json as NSDictionary?, error as NSString?)
+            } else {
+                self.getSessionFrom(code: json?["code"] as? String ?? "")
             }
         }
 
-        serverParams.removeValue(forKey: "secret")
+        webViewController?.show()
+    }
 
-        var bodyData: [String : Any] = [:]
+    func loadProvider(params: [String: Any]) {
+        let urlString = getUrl(path: EndPoints.auth)
 
+        var requestParams: [String: Any] = [:]
+        requestParams["redirect_uri"] = SsoLoginWrapper.redirectUri
+        requestParams["response_type"] = "code"
+        requestParams["client_id"] = config?.apiKey ?? ""
+        requestParams["scope"] = "device_sso"
+        requestParams["code_challenge"] = pkceCode?.challenge ?? ""
+        requestParams["code_challenge_method"] = "S256"
+        
+        let paramsMapAsJson = params.mapValues {
+            if let p = $0 as? [String: Any] {
+                return p.asJson
+            }
+            return String(describing: $0)
+        }
+        
+        requestParams.merge(paramsMapAsJson) { _, new  in new }
+        requestParams.removeValue(forKey: "secret")
+
+        let dataURL = URL(string: "\(urlString)?\(requestParams.asURI)")!
+
+        webViewController = ASWebAuthenticationLayer(url: dataURL)
+    }
+
+    private func getUrl(path: String = "") -> String {
+        return "\(config!.cnameEnable ? "https://": EndPoints.fidmUrl)\(self.config?.apiDomain ?? "")\(EndPoints.loginPath)\(self.config?.apiKey ?? "")/\(path)"
+    }
+
+    private func getSessionFrom(code: String) {
+        var params: [String: Any] = [:]
+        params["redirect_uri"] = SsoLoginWrapper.redirectUri
+        params["client_id"] = self.config?.apiKey ?? ""
+        params["code_verifier"] = self.pkceCode?.verifier ?? ""
+        params["grant_type"] = "authorization_code"
+        params["code"] = code
+
+        let urlString = getUrl()
+
+        networkProvider?.unsignRequest(url: urlString, model: ApiRequestModel(method: EndPoints.token, params: params), completion: { [weak self] data, error in
+
+            guard let self = self else { return }
+
+            if let res = self.responseHandler(data: data, error: error) {
+                self.createSession(response: res)
+            }
+        })
+    }
+
+    private func createSession(response: [String: Any]) {
+        guard
+            let sessionToken = response["access_token"] as? String,
+            let sessionSecret = response["device_secret"] as? String
+        else {
+            self.completionHandler?(nil, "general error")
+            return
+        }
+
+        let json: NSDictionary = ["status": "ok", "accessToken": sessionToken, "tokenSecret": sessionSecret, "sessionExpiration": NSString(string: String(response["expires_in"] as? Int ?? 0))]
+
+        self.completionHandler?(json, nil)
+    }
+
+    private func responseHandler(data: NSData?, error: Error?) -> [String: Any]? {
         do {
-            bodyData = try SignatureUtils.prepareSignature(config: config!, persistenceService: persistenceService!, session: GigyaSession(sessionToken: params?["oauth_token"] as? String ?? "", secret: params?["secret"] as? String ?? ""), path: loginPath, params: serverParams)
+            guard let data = data,
+                  let json = try JSONSerialization.jsonObject(with: data as Data, options: []) as? [String: Any]
+            else {
+                self.completionHandler?(nil, "general error")
+                return nil
+            }
+
+            if let _ = json["access_token"] as? String {
+                return json
+            } else if let error = json["error_uri"] as? String {
+                self.completionHandler?(nil, error as NSString)
+            } else if let error = json["error_description"] as? String {
+                self.completionHandler?(nil, error as NSString)
+            }
 
         } catch let error {
-            GigyaLogger.log(with: self, message: "error to make signature in web social login - \(error.localizedDescription)")
+            self.completionHandler?(nil, error.localizedDescription as NSString)
         }
 
-        let urlAllowed = NSCharacterSet(charactersIn: GigyaDefinitions.charactersAllowed).inverted
-
-        let bodyDataParmas = bodyData.mapValues { value -> String in
-            return "\(value)"
-        }
-
-        let bodyString: String = bodyDataParmas.sorted(by: <).reduce("") { "\($0)\($1.0)=\($1.1.addingPercentEncoding(withAllowedCharacters: urlAllowed) ?? "")&" }
-
-        let dataURL = URL(string: urlString)!   
-
-        var request: URLRequest = URLRequest(url: dataURL)
-
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")  // the request is JSON
-        request.httpBody = bodyString.dropLast().data(using: String.Encoding.utf8)
-
-        if #available(iOS 11, *) {
-            webViewController?.webView.load(request)
-        } else {
-
-            let html = """
-            <html>
-                <head>
-                    <script>
-                        function post() {
-                        //how to call： post('URL', {"key": "value"});
-                            var method = "post";
-                            var paramsx = "\(bodyString)";
-                            var params = new URLSearchParams(paramsx);
-
-                            var form = document.createElement("form");
-                            form.setAttribute("method", method);
-                            form.setAttribute("action", "\(urlString)");
-                            for (const [key, value] of params) {
-                                var hiddenField = document.createElement("input");
-                                hiddenField.setAttribute("type", "hidden");
-                                hiddenField.setAttribute("name", key);
-                                hiddenField.setAttribute("value", value.replace(" ","+"));
-                                form.appendChild(hiddenField);
-                            }
-
-                            document.body.appendChild(form);
-
-                            form.submit();
-                        }
-                    </script>
-                </head>
-                <body onload='post();'>
-                </body>
-            </html>
-
-            """
-            webViewController?.webView.loadHTMLString(html, baseURL: Bundle.main.bundleURL)
-
-        }
+        return nil
     }
 }
 
-extension WebLoginWrapper: WKNavigationDelegate {
-    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        if navigationAction.navigationType == .other || navigationAction.navigationType == .formSubmitted {
-            if let url = navigationAction.request.url {
-                GigyaLogger.log(with: providerType.rawValue, message: "Log redirect url: \(url)")
-                if
-                    let status = url["status"],
-                    status == "ok",
-                    let accessToken = url["access_token"],
-                    let tokenSecret = url["x_access_token_secret"] {
-                    let sessionExpiration = url["expires_in"] ?? "0"
+@available(iOS 13.0, *)
+class ASWebAuthenticationLayer: NSObject, ASWebAuthenticationPresentationContextProviding
+{
+    var closure: ([String: Any]?, String?) -> Void = { _, _ in}
 
-                    let json = ["status": status, "accessToken": accessToken, "tokenSecret": tokenSecret, "sessionExpiration": sessionExpiration]
+    let url: URL
+    
+    private var session: ASWebAuthenticationSession?
 
+    init(url: URL) {
+        self.url = url
+    }
 
-                    completionHandler?(json, nil)
+    func show() {
+        let handler: ASWebAuthenticationSession.CompletionHandler = { [self] u, error in
+            if let error = error as? NSError {
+                if error.code == 1 {
+                    closure(nil, GigyaDefinitions.Plugin.canceled)
+                    return
+                }
+                closure(nil, error.localizedDescription)
+                return
+            }
+            
+            if let u = u, u.absoluteString.contains("error") {
+                closure(nil, u["error_uri"])
+                return
+            }
 
-                    // dismiss viewController
-                    navigationController?.dismiss(animated: true, completion: nil)
-                } else if
-                    let status = url["status"],
-                    status == "ok",
-                    let idToken = url["id_token"] {
+            if let u = u, u.absoluteString.contains(SsoLoginWrapper.redirectUri) {
+                GigyaLogger.log(with: self, message: "Log redirect url: \(u)")
+                if let code = u.valueOf("code") {
+                    GigyaLogger.log(with: self, message: "code: \(code)")
+                    closure(["code": code], nil)
 
-                    let json = ["status": status, "idToken": idToken]
-
-                    completionHandler?(json, nil)
-
-                    // dismiss viewController
-                    navigationController?.dismiss(animated: true, completion: nil)
-
-                } else if let error = url["error_description"], !error.isEmpty {
-
-                    completionHandler?(nil, url.absoluteString)
-
-                    navigationController?.dismiss(animated: true, completion: nil)
+                } else {
+                    closure(nil, u.absoluteString)
                 }
             }
         }
-        decisionHandler(.allow)
+        
+        if #available(iOS 17.4, *) {
+            session = ASWebAuthenticationSession.init(url: url, callback: .customScheme(SsoLoginWrapper.callbackURLScheme), completionHandler: handler)
+        } else {
+            session = ASWebAuthenticationSession(url: url, callbackURLScheme: SsoLoginWrapper.callbackURLScheme, completionHandler: handler)
+        }
+
+        session?.presentationContextProvider = self
+
+        session?.start()
+    }
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        return UIApplication.shared.windows.first { window in
+            return window.isKeyWindow
+        } ?? UIApplication.shared.windows.first!
     }
 }
