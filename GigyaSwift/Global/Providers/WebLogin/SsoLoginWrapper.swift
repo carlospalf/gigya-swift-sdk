@@ -27,7 +27,7 @@ final class SsoLoginWrapper: NSObject, ProviderWrapperProtocol {
 
     private var navigationController: UINavigationController?
 
-    private var completionHandler: ((_ jsonData: NSDictionary?, _ error: NSString?) -> Void)? = nil
+    private var completionHandler: ((_ jsonData: [String: Any]?, _ error: String?) -> Void)? = nil
     
     private var pkceCode: PKCEHelper?
 
@@ -57,11 +57,10 @@ final class SsoLoginWrapper: NSObject, ProviderWrapperProtocol {
         self.pkceCode = try? PKCEHelper()
     }
 
-    @objc public func login(_ params: NSDictionary?, viewController: UIViewController?,
-               completion: @escaping (NSDictionary?, NSString?) -> Void) {
+    func login(params: [String: Any]?, viewController: UIViewController?,
+               completion: @escaping (_ jsonData: [String: Any]?, _ error: String?) -> Void) {
         
-        let swiftParams = params as? [String: Any] ?? [:]
-        loadProvider(params: swiftParams)
+        loadProvider(params: params ?? [:])
 
         completionHandler = completion
 
@@ -69,7 +68,7 @@ final class SsoLoginWrapper: NSObject, ProviderWrapperProtocol {
             guard let self = self else { return }
 
             if let error = error {
-                self.completionHandler?(json as NSDictionary?, error as NSString?)
+                completion(json, error)
             } else {
                 self.getSessionFrom(code: json?["code"] as? String ?? "")
             }
@@ -137,7 +136,7 @@ final class SsoLoginWrapper: NSObject, ProviderWrapperProtocol {
             return
         }
 
-        let json: NSDictionary = ["status": "ok", "accessToken": sessionToken, "tokenSecret": sessionSecret, "sessionExpiration": NSString(string: String(response["expires_in"] as? Int ?? 0))]
+        let json: [String : Any] = ["status": "ok", "accessToken": sessionToken, "tokenSecret": sessionSecret, "sessionExpiration": String(response["expires_in"] as? Int ?? 0)]
 
         self.completionHandler?(json, nil)
     }
@@ -154,13 +153,13 @@ final class SsoLoginWrapper: NSObject, ProviderWrapperProtocol {
             if let _ = json["access_token"] as? String {
                 return json
             } else if let error = json["error_uri"] as? String {
-                self.completionHandler?(nil, error as NSString)
+                self.completionHandler?(nil, error)
             } else if let error = json["error_description"] as? String {
-                self.completionHandler?(nil, error as NSString)
+                self.completionHandler?(nil, error)
             }
 
         } catch let error {
-            self.completionHandler?(nil, error.localizedDescription as NSString)
+            self.completionHandler?(nil, error.localizedDescription)
         }
 
         return nil
