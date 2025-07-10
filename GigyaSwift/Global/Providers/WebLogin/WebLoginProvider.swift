@@ -38,7 +38,10 @@ final class WebLoginProvider: Provider {
         newParams["oauth_token"] = sessionService.session?.token
         newParams["secret"] = sessionService.session?.secret
 
-        provider.login(params: newParams, viewController: viewController) { [weak self] jsonData, error in
+        provider.login(newParams as NSDictionary, viewController: viewController) { [weak self] jsonData, error in
+            let jsonData = jsonData as? [String: Any]
+            let error = error as String?
+
             guard error == nil else {
                 if error == GigyaDefinitions.Plugin.canceled {
                     let errorObject = NetworkError.providerError(data: error ?? "")
@@ -49,15 +52,15 @@ final class WebLoginProvider: Provider {
                     return
                 }
 
-                var errorDetails = error!["errorDetails"] ?? ""
+                var errorDetails = jsonData?["errorDetails"] as? String ?? ""
                 errorDetails = errorDetails.replacingOccurrences(of: "+", with: " ").removingPercentEncoding ?? ""
-                let errorDesc = error!["error_description"] ?? error
+                let errorDesc = jsonData?["error_description"] as? String ?? error
                 let getErrorCode = errorDesc?.split(separator: "+").first
-                let errorCode = Int(getErrorCode ?? "") ?? Int("\(error?["error_code"] ?? "-1")") ?? -1
-                let regToken = error!["regToken"] ?? ""
-                let callId = error!["callId"] ?? ""
-                let accessToken = error!["access_token"] ?? ""
-                let provider = error!["provider"] ?? ""
+                let errorCode = Int(getErrorCode ?? "") ?? Int("\(jsonData?["error_code"] ?? "-1")") ?? -1
+                let regToken = jsonData?["regToken"] ?? ""
+                let callId = jsonData?["callId"] ?? ""
+                let accessToken = jsonData?["access_token"] ?? ""
+                let provider = jsonData?["provider"] ?? ""
 
                 let data = ["regToken": regToken, "errorCode": errorCode, "errorDetails": errorDetails, "provider": provider, "access_token": accessToken] as [String : Any]
 
