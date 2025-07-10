@@ -17,7 +17,8 @@ Pod::Spec.new do |spec|
 #  spec.platform = :ios
   spec.ios.deployment_target  = '11.0'
 
-  spec.source_files  = 'GigyaSwift/*/*.swift', 'GigyaSwift/*/*/*.swift', 'GigyaSwift/*/*/*/*.swift', 'GigyaSwift/*/*/*/*/*.swift'
+  spec.source_files  = 'GigyaSwift/*/*.swift', 'GigyaSwift/*/*/*.swift', 'GigyaSwift/*/*/*/*.swift', 'GigyaSwift/*/*/*/*/*.swift', 'GigyaSwift/Global/Providers/ProviderWrapperProtocol.h'
+  spec.public_header_files = 'GigyaSwift/Global/Providers/ProviderWrapperProtocol.h'
   spec.resource_bundle = {
     "Gigya_Privacy" => "GigyaSwift/PrivacyInfo.xcprivacy"
   }

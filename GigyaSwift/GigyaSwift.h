@@ -8,6 +8,8 @@
 
 #import <UIKit/UIKit.h>
 
+#import "Global/Providers/ProviderWrapperProtocol.h"
+
 //! Project version number for GigyaSwift.
 FOUNDATION_EXPORT double GigyaSwiftVersionNumber;
 
@@ -15,4 +17,5 @@ FOUNDATION_EXPORT double GigyaSwiftVersionNumber;
 FOUNDATION_EXPORT const unsigned char GigyaSwiftVersionString[];
 
 // In this header, you should import all the public headers of your framework using statements like #import <GigyaSwift/PublicHeader.h>
+
 
